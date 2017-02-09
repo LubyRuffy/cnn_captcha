@@ -1,0 +1,2 @@
+https://github.com/skyduy/CNN_keras
+https://github.com/ty4z2008/Qix/blob/master/dl.md
