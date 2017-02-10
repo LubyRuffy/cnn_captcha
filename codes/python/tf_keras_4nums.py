@@ -538,10 +538,12 @@ def train_model():
     model.summary()
     model.save_weights(model_path)
 
+    print(model.metrics_names)
     score = model.evaluate(X_test, Y_test, verbose=0)
 
-    print('Test score:', score[0])
-    print('Test accuracy:', score[1])
+    print('loss:', score[0])
+    print('accuracy:', score[1])
+    print('my_metricK0:', score[2])
 
 
 
