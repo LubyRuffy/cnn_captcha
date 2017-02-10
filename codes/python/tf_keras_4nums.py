@@ -9,9 +9,12 @@ from __future__ import print_function
 import numpy as np
 np.random.seed(1337)  # for reproducibility
 
+
+import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.models import Model
+from keras.optimizers import SGD
 from keras.layers import Input, Dense, Dropout, Activation, Flatten, Merge, Lambda
 from keras.layers import Convolution2D, MaxPooling2D
 from keras.utils import np_utils
@@ -19,7 +22,6 @@ from keras import backend as K
 from keras.utils.visualize_util import plot
 
 #import tensorflow as tf
-import keras.backend as K
 
 
 import os,sys
@@ -139,8 +141,10 @@ Y_train = Y_train.astype('float32')
 X_test = X_test.astype('float32')
 Y_test = Y_test.astype('float32')
 
+#dim_ordering = K.image_dim_ordering()
+K_dim_ordering = 'tf'
 
-if K.image_dim_ordering() == 'th':
+if K_dim_ordering == 'th':
     X_train = X_train.reshape(X_train.shape[0], IMG_C, IMG_H, IMG_W)
     X_test = X_test.reshape(X_test.shape[0], IMG_C, IMG_H, IMG_W)
     input_shape = (IMG_C, IMG_H, IMG_W)
@@ -181,7 +185,7 @@ def get_model():
 
     #64X16X16
     #3X3@48
-    model.add(Convolution2D(48, kernel_size[0], kernel_size[1],
+    model.add(Convolution2D(88, kernel_size[0], kernel_size[1],
                             border_mode='same',
                             input_shape=input_shape))
     model.add(Activation('relu'))
@@ -207,7 +211,7 @@ def get_model():
 
     #16X4X64
     #3X3X48
-    model.add(Convolution2D(48, 3, 3,
+    model.add(Convolution2D(88, 3, 3,
                             border_mode='same',
                             input_shape=input_shape))
     model.add(Activation('relu'))
@@ -220,9 +224,112 @@ def get_model():
 
 
     model.add(Dense(64))
+    model.add(Dropout(0.8))
+    model.add(Dense(64))
     model.add(Dense(Y_dim))
     model.add(Activation('softmax'))
+    #model.add(Activation('sigmoid'))
 
+    def softmax4(x):
+        s1 = K.softmax(x[0:10])
+        s2 = K.softmax(x[10:20])
+        s3 = K.softmax(x[20:30])
+        s4 = K.softmax(x[30:40])
+
+        #rt = K.concatenate( [s1, s2, s3, s4] )
+        rt = keras.engine.merge( [s1, s2, s3, s4], mode='concat')
+        print(K.get_variable_shape(rt))
+        return rt
+
+    #model.add(Activation(softmax4))
+    return model
+
+
+def get_model4_small():
+    #input data
+    inputs = Input(shape=input_shape)
+
+    #64X16X3
+    #3X3@16
+    conv1 = Convolution2D(8, 3, 3,
+                            border_mode='same',
+                            input_shape=input_shape)(inputs)
+    relu1 = Activation('relu')(conv1)
+    #model.add(MaxPooling2D(pool_size=pool_size))
+
+
+    #64X16X16
+    #3X3@48
+    conv2 = Convolution2D(8, kernel_size[0], kernel_size[1],
+                            border_mode='same',
+                            input_shape=input_shape)(relu1)
+    relu2 = Activation('relu')(conv2)
+    maxpool2 = MaxPooling2D(pool_size=pool_size)(relu2)
+
+
+    #32X8X48
+    #3X3X64
+    conv3 = Convolution2D(12, kernel_size[0], kernel_size[1],
+                            border_mode='same',
+                            input_shape=input_shape)(maxpool2)
+    relu3 = Activation('relu')(conv3)
+    maxpool3 = MaxPooling2D(pool_size=pool_size)(relu3)
+
+    #32X8X64
+    #3X3X64
+    conv4 = Convolution2D(8, 3, 3,
+                            border_mode='same',
+                            input_shape=input_shape)(maxpool3)
+    relu4 = Activation('relu')(conv4)
+    maxpool4 = MaxPooling2D(pool_size=pool_size)(relu4)
+
+
+    #16X4X64
+    #3X3X48
+    conv5 = Convolution2D(8, 3, 3,
+                            border_mode='same',
+                            input_shape=input_shape)(maxpool4)
+    relu5 = Activation('relu')(conv5)
+    maxpool5 = MaxPooling2D(pool_size=pool_size)(relu5)
+
+
+    #8X2X48
+    flat1 = Flatten()(maxpool5)
+    fc1 = Dense(32)(flat1)
+
+    fc21 = Dense(12)(fc1)
+    fc22 = Dense(12)(fc1)
+    fc23 = Dense(12)(fc1)
+    fc24 = Dense(12)(fc1)
+
+
+    fc31 = Dense(Y_dim/4)(fc21)
+    fc32 = Dense(Y_dim/4)(fc22)
+    fc33 = Dense(Y_dim/4)(fc23)
+    fc34 = Dense(Y_dim/4)(fc24)
+
+
+    fc41 = Activation('softmax')(fc31)
+    fc42 = Activation('softmax')(fc31)
+    fc43 = Activation('softmax')(fc33)
+    fc44 = Activation('softmax')(fc34)
+
+    #fc5 = Merge([fc41, fc42, fc43, fc44], mode='concat', concat_axis=1)
+    fc5 = keras.engine.merge([fc41, fc42, fc43, fc44], mode='concat')
+    predictions = fc5
+
+
+    def my_layer(inputs):
+        pass
+
+    def my_layer_output_shape(input_shape):
+        shape = list(input_shape)
+        assert len(shape) == 2  # only valid for 2D tensors
+        return tuple(shape)
+
+    #predictions = Lambda()
+
+    model = Model(input=inputs, output=predictions)
     return model
 
 
@@ -233,7 +340,7 @@ def get_model4():
 
     #64X16X3
     #3X3@16
-    conv1 = Convolution2D(16, 3, 3,
+    conv1 = Convolution2D(48, 3, 3,
                             border_mode='same',
                             input_shape=input_shape)(inputs)
     relu1 = Activation('relu')(conv1)
@@ -268,7 +375,7 @@ def get_model4():
 
     #16X4X64
     #3X3X48
-    conv5 = Convolution2D(48, 3, 3,
+    conv5 = Convolution2D(64, 3, 3,
                             border_mode='same',
                             input_shape=input_shape)(maxpool4)
     relu5 = Activation('relu')(conv5)
@@ -296,9 +403,9 @@ def get_model4():
     fc43 = Activation('softmax')(fc33)
     fc44 = Activation('softmax')(fc34)
 
-    fc5 = Merge([fc41, fc42, fc43, fc44], mode='concat', concat_axis=1)
-    #fc5 = Dense(Y_dim)(fc1)
-    predictions = Flatten(fc5)
+    #fc5 = Merge([fc41, fc42, fc43, fc44], mode='concat', concat_axis=1)
+    fc5 = keras.engine.merge([fc41, fc42, fc43, fc44], mode='concat')
+    predictions = fc5
 
 
     def my_layer(inputs):
@@ -330,7 +437,8 @@ def my_metricK(y_true, y_pred):
     #print(K.get_value(rt3))
     #print(K.get_value(rt4))
 
-    rt = K.concatenate( [rt1, rt2, rt3, rt4] )
+    #rt = K.concatenate( [rt1, rt2, rt3, rt4] )
+    rt = keras.engine.merge( [rt1, rt2, rt3, rt4] )
 
     #print(K.get_value(rt))
     rtsum = K.sum(K.cast(rt, dtype='float32'))
@@ -365,36 +473,39 @@ def my_metricK0(y_true, y_pred):
     #print(K.get_value(rt4))
 
 
-    print('shape of rt1')
+    print('get rt1 shape')
     print(K.get_variable_shape(rt1))
-    rt = K.concatenate( [rt1, rt2, rt3, rt4] )
+    rt1 = K.expand_dims(rt1)
+    rt2 = K.expand_dims(rt2)
+    rt3 = K.expand_dims(rt3)
+    rt4 = K.expand_dims(rt4)
+    print('get rt1 shape')
+    print(K.get_variable_shape(rt1))
+
+    #############################################
+    #rt = K.concatenate( [rt1, rt2, rt3, rt4] )
+    rt = keras.engine.merge( [rt1, rt2, rt3, rt4], mode='concat', concat_axis=-1)
+    #############################################
     print('shape of rt')
     print(K.get_variable_shape(rt))
 
+    #rt = K.stack( [rt1, rt2, rt3, rt4]  )
+    #rt = K.stack( K.rt1  )
+
     #print(K.get_value(rt))
-    rtsum = K.sum(K.cast(rt, dtype='float32'), axis=0)
-    print('shape of rtsum')
-    print(K.get_variable_shape(rtsum))
+    #rtsum = K.sum(K.cast(rt, dtype='float32'), axis=-1)
+    #print('shape of rtsum')
+    #print(K.get_variable_shape(rtsum))
     #print(K.get_value(rtsum))
-    acc = K.mean(K.cast(rtsum, dtype='float32'), axis=-1)
+    acc1 = K.mean(rt, axis=0)
+    acc = K.mean(acc1, axis=0)
     print('shape of acc')
     print(K.get_variable_shape(acc))
-    #print(K.get_value(acc))
-
-    #print(K.get_variable_shape(rt1))
     #acc = K.variable(0.5, dtype='float32')
-    acc = K.mean(K.cast(rtsum, dtype='float32'))
+    #acc = K.mean(K.cast(rtsum, dtype='float32'))
+    #acc = K.dot(acc, K.variable(0.25, dtype='float32'))
     return acc
 
-
-
-def my_metricK00(y_true, y_pred):
-    print(K.get_variable_shape(y_true))
-    print(K.get_variable_shape(y_pred))
-
-
-    acc = K.mean(K.cast(rtsum, dtype='float32'))
-    return acc
 
 
 
@@ -435,7 +546,7 @@ def train_model():
 
 
 
-def test_web(model):
+def test_model_web(model):
     url = 'https://www.ed3688.com/sb2/me/generate_validation_code.jsp'
 
     while(True):
@@ -461,9 +572,9 @@ def test_web(model):
             cv2.imshow('img', img00)
             X_pred0 = img1
             X_pred0 = X_pred0[np.newaxis, :]
-            print(X_pred0.shape)
+            #print(X_pred0.shape)
 
-            if K.image_dim_ordering() == 'th':
+            if K_dim_ordering == 'th':
                 X_pred0 = X_pred0.reshape(X_pred0.shape[0], IMG_C, IMG_H, IMG_W)
             else:
                 X_pred0 = X_pred0.reshape(X_pred0.shape[0], IMG_H, IMG_W, IMG_C)
@@ -471,8 +582,8 @@ def test_web(model):
 
 
             pred_y0 = model.predict(X_pred0, batch_size=1)
-            print(pred_y0.shape)
-            print(pred_y0)
+            #print(pred_y0.shape)
+            #print(pred_y0)
             idx1 = np.argmax(pred_y0[0, 0*Y_dim_each_classes:1*Y_dim_each_classes])
             idx2 = np.argmax(pred_y0[0, 1*Y_dim_each_classes:2*Y_dim_each_classes])
             idx3 = np.argmax(pred_y0[0, 2*Y_dim_each_classes:3*Y_dim_each_classes])
@@ -482,7 +593,7 @@ def test_web(model):
 
 
 
-def test_img(model, lst_path):
+def test_model_img(model, lst_path):
     lst = []
     for e in open(lst_path, 'r'):
         lst.append(tmp_prex + e.strip())
@@ -505,7 +616,7 @@ def test_img(model, lst_path):
             X_pred0 = X_pred0[np.newaxis, :]
             #print(X_pred0.shape)
 
-            if K.image_dim_ordering() == 'th':
+            if K_dim_ordering == 'th':
                 X_pred0 = X_pred0.reshape(X_pred0.shape[0], IMG_C, IMG_H, IMG_W)
             else:
                 X_pred0 = X_pred0.reshape(X_pred0.shape[0], IMG_H, IMG_W, IMG_C)
@@ -526,18 +637,25 @@ def test_img(model, lst_path):
 
 model = get_model()
 #model = get_model4()
+#model = get_model4_small()
 model.summary()
+
+xxx = raw_input('disp network')
 
 model.compile(loss='categorical_crossentropy',
               optimizer='adam',
+              #metrics=['accuracy', my_metricK0])
               metrics=['accuracy', my_metricK0])
 
+#sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+#model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
 plot(model, to_file=tmp_prex+'model.png', show_shapes=True)
 
 model_path = tmp_prex + 'weihts.h5'
-nb_epoch = 10
+nb_epoch = 20
+#batch_size = 1
 train_model()
 model.load_weights(model_path)
-#test_web(model)
-#test_img(model, tmp_prex+'4nums_test_lst.txt')
+test_model_web(model)
+#test_model_img(model, tmp_prex+'4nums_test_lst.txt')
