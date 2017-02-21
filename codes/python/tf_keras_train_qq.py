@@ -6,26 +6,30 @@ Gets to 99.25% test accuracy after 12 epochs
 '''
 
 from __future__ import print_function
+from __future__ import unicode_literals
 import numpy as np
 np.random.seed(1337)  # for reproducibility
+
 
 
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.models import Model
+from keras.callbacks import ModelCheckpoint
 from keras.optimizers import SGD
 from keras.layers import Input, Dense, Dropout, Activation, Flatten, Merge, Lambda
 from keras.layers import Convolution2D, MaxPooling2D
+from keras.layers import BatchNormalization
 from keras.utils import np_utils
 from keras import backend as K
-#from keras.utils.visualize_util import plot
-
-
+from keras.utils.visualize_util import plot
+from keras.models import model_from_json
 from keras.preprocessing.image import ImageDataGenerator
 
 
 #import tensorflow as tf
+
 
 
 import os,sys
@@ -35,6 +39,7 @@ import random
 import pickle
 import h5py
 import urllib
+import time
 
 
 
@@ -44,148 +49,83 @@ nb_epoch = 50
 batch_size = 64
 kernel_size = (3, 3)
 pool_size = (2, 2)
-#IMG_W = 130
-#IMG_H = 50
-#IMG_C = 3
 IMG_W = 64
-IMG_H = 16
-IMG_C = 1
+IMG_H = 64
+IMG_C = 3
 X_dim = IMG_W*IMG_H*IMG_C
 Y_dim_each_classes = 26
 Y_dim_nums = 4
 Y_dim = Y_dim_each_classes * Y_dim_nums
+EACH_HDF5_CNT = 32
+SAVE_HDF5_CNT = batch_size*EACH_HDF5_CNT
+HDF5_CNT = 12
 
-
-def save_dataset_hdf5():
-    lst = []
-    lst_prex = os.getcwd() + '/../../tmp/' + dataset_name + '/'
-    lst_path = '../../tmp/' + dataset_name + '/4_qq_res-all-OK.txt'
-
-    for line in open(lst_path, 'r'):
-       lst.append(lst_prex + '/' + line.strip())
-
-    # loading data
-    X_data = np.zeros( (0, X_dim), dtype=np.float32 )
-    Y_data = np.zeros( (0, Y_dim), dtype=np.float32 )
-
-
-    for sam_idx in range(len(lst)):
-        line = lst[sam_idx]
-        print(line)
-        v = string.split(line, ' ')
-        v_len = len(v)
-        img0 = cv2.imread(v[0])
-        if img0 != None:
-            #img00 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
-            img00 = img0
-            img = cv2.resize(img00, (IMG_W, IMG_H), fx=1, fy=1, interpolation=cv2.INTER_LINEAR)
-            #img1 = img1.transpose(  )
-            img1 = img.reshape( (-1,) )
-            img1 = img1/255.0
-
-            X_data = np.row_stack( (X_data, img1) )
-
-            tmp = np.zeros( (Y_dim) )
-            tmp[0*Y_dim_each_classes +int(v[1])] = 1.0
-            tmp[1*Y_dim_each_classes+int(v[2])] = 1.0
-            tmp[2*Y_dim_each_classes+int(v[3])] = 1.0
-            tmp[3*Y_dim_each_classes+int(v[4])] = 1.0
-            Y_data = np.row_stack( (Y_data, tmp) )
-            #Y_data = np.row_stack( (Y_data, tmp[0: 10]) )
-
-            '''
-            if sam_idx == 123:
-                print int(v[1])
-                print int(v[2])
-                print int(v[3])
-                print int(v[4])
-                print tmp
-                xx = raw_input('pause:')
-            '''
-
-
-    X_data = X_data.reshape( (-1, IMG_W, IMG_H, IMG_C) )
-    Y_data = Y_data
-
-    #save_data as hdf5
-    h5_file = h5py.File(tmp_prex + dataset_name + '.h5', 'w')
-    h5_file.create_dataset('X_data', data=X_data)
-    h5_file.create_dataset('Y_data', data=Y_data)
-    h5_file.close()
-
-
-
-# loading data
-#save_dataset_hdf5()
-h5_file = h5py.File(tmp_prex + dataset_name + '.h5', 'r')
-print(h5_file.keys())
-
-X_data = h5_file['X_data'][:]
-Y_data = h5_file['Y_data'][:]
-
-for ii in range(Y_data.shape[0]):
-    r = Y_data[ii, :]
-    r[10:40] = np.zeros(shape=(30))
-    Y_data[ii, :] = r
-
-
-print(X_data.shape)
-print(Y_data.shape)
-
-samples_cnt = X_data.shape[0]
-idx_lst = np.arange(samples_cnt)
-
-random.shuffle(idx_lst)
-
-train_idxs = idx_lst[0:int(samples_cnt*0.8)]
-test_idxs = idx_lst[int(samples_cnt*0.8):]
-
-X_train = X_data[train_idxs, :]
-Y_train = Y_data[train_idxs, :]
-X_test = X_data[test_idxs, :]
-Y_test = Y_data[test_idxs, :]
-
-
-X_train = X_train.astype('float32')
-Y_train = Y_train.astype('float32')
-X_test = X_test.astype('float32')
-Y_test = Y_test.astype('float32')
 
 #dim_ordering = K.image_dim_ordering()
 K_dim_ordering = 'tf'
 
 if K_dim_ordering == 'th':
-    X_train = X_train.reshape(X_train.shape[0], IMG_C, IMG_H, IMG_W)
-    X_test = X_test.reshape(X_test.shape[0], IMG_C, IMG_H, IMG_W)
     input_shape = (IMG_C, IMG_H, IMG_W)
 else:
-    X_train = X_train.reshape(X_train.shape[0], IMG_H, IMG_W, IMG_C)
-    X_test = X_test.reshape(X_test.shape[0], IMG_H, IMG_W, IMG_C)
     input_shape = (IMG_H, IMG_W, IMG_C)
 
 
-print('X_train.shape', X_train.shape)
-print('Y_train.shape', Y_train.shape)
-print('X_test.shape', X_test.shape)
-print('Y_test.shape', Y_test.shape)
 
-print(X_train.shape[0], 'train samples')
-print(X_test.shape[0], 'test samples')
-
-
-#print(X_train[0, :])
-#print(Y_train[0, :])
+def read_hdf5(idx):
+    # loading data
+    hdf5_file_path = tmp_prex + dataset_name + str(idx)+ '.h5'
+    h5_file = h5py.File(hdf5_file_path, 'r')
+    print(h5_file.keys())
 
 
-img_test = X_test[100, :]
-img_test1 = img_test*255
-img_test2 = img_test1.astype('uint8')
-#cv2.imshow('img_test2', img_test2)
-#cv2.waitKey(0)
 
-print('finished loading data')
-xxx = input('pause')
+    X_data = h5_file['X_data'][:]
+    Y_data = h5_file['Y_data'][:]
 
+    print(X_data.shape)
+    print(Y_data.shape)
+
+    samples_cnt = X_data.shape[0]
+    idx_lst = np.arange(samples_cnt)
+
+    random.shuffle(idx_lst)
+
+    train_idxs = idx_lst[0:int(samples_cnt*0.8)]
+    test_idxs = idx_lst[int(samples_cnt*0.8):]
+
+    X_train = X_data[train_idxs, :]
+    Y_train = Y_data[train_idxs, :]
+    X_test = X_data[test_idxs, :]
+    Y_test = Y_data[test_idxs, :]
+
+
+    X_train = X_train.astype('float32')
+    Y_train = Y_train.astype('float32')
+    X_test = X_test.astype('float32')
+    Y_test = Y_test.astype('float32')
+
+    #dim_ordering = K.image_dim_ordering()
+    K_dim_ordering = 'tf'
+
+    if K_dim_ordering == 'th':
+        X_train = X_train.reshape(X_train.shape[0], IMG_C, IMG_H, IMG_W)
+        X_test = X_test.reshape(X_test.shape[0], IMG_C, IMG_H, IMG_W)
+        input_shape = (IMG_C, IMG_H, IMG_W)
+    else:
+        X_train = X_train.reshape(X_train.shape[0], IMG_H, IMG_W, IMG_C)
+        X_test = X_test.reshape(X_test.shape[0], IMG_H, IMG_W, IMG_C)
+        input_shape = (IMG_H, IMG_W, IMG_C)
+
+
+    print('X_train.shape', X_train.shape)
+    print('Y_train.shape', Y_train.shape)
+    print('X_test.shape', X_test.shape)
+    print('Y_test.shape', Y_test.shape)
+
+    print(X_train.shape[0], 'train samples')
+    print(X_test.shape[0], 'test samples')
+
+    return(X_train, Y_train, X_test, Y_test)
 
 
 
@@ -744,40 +684,82 @@ def my_metric(y_true, y_pred):
 
 
 
-def train_model():
-    print(X_train.dtype)
+def DataAugmentation(X_batch, Y_batch):
+    n = X_batch.shape[0]
+    for i in range(n):
+        x = X_batch[i, ]
+        y = Y_batch[i, ]
 
-    datagen = ImageDataGenerator(
-                featurewise_center=False,
-                featurewise_std_normalization=False,
-                rotation_range=20,
-                width_shift_range=0.2,
-                height_shift_range=0.2,
-                zoom_range=0.2,
-                horizontal_flip=True)
+        #print(x.shape)
+        #print(y.shape)
 
-    datagen.fit(X_train)
+        if K_dim_ordering == 'th':
+            xx = x.reshape(IMG_C, IMG_H, IMG_W)
+        else:
+            xx = x.reshape(IMG_H, IMG_W, IMG_C)
 
-    hist = model.fit_generator(datagen.flow(X_train, Y_train, batch_size=batch_size), nb_epoch=nb_epoch,
-               samples_per_epoch=len(X_train), verbose=1, validation_data=(X_test, Y_test))
+        #print('xx shape')
+        #print(xx.shape)
 
+        crop_gap = 50.0
+        crop_w = random.random()/crop_gap
+        crop_h = random.random()/crop_gap
 
-    #hist = model.fit(X_train, Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
-    #          verbose=1, validation_data=(X_test, Y_test))
+        (x1,y1) = (y[0],y[1])
+        (x2,y2) = (y[2],y[3])
 
-    #hist = model.fit(X_train, Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
-    #          verbose=1)
-    #output = open('hist.pkl', 'wb')
-    #pickle.dump(hist, output, -1)
+        crop_x1 = x1 - crop_w
+        crop_y1 = y1 - crop_h
 
-    model.summary()
-    model.save_weights(model_path)
+        crop_x2 = x2 - crop_w
+        crop_y2 = y2 - crop_h
 
-    print(model.metrics_names)
-    score = model.evaluate(X_test, Y_test, verbose=0)
+        if crop_x1 <=0 or crop_y1 <=0 or crop_x2 <=0 or crop_y2 <= 0:
+            continue
 
-    print('loss:', score[0])
-    print('accuracy:', score[1])
+        #print(crop_w, crop_h, crop_x1, crop_y1, crop_x2, crop_y2)
+        lt_x1 = int(crop_w*IMG_W)
+        lt_y1 = int(crop_h*IMG_H)
+        crop_img = xx[lt_y1:IMG_H-lt_y1, lt_x1:IMG_W-lt_x1]
+        crop_img_y = np.array( [crop_x1, crop_y1, crop_x2, crop_y2] )
+
+        #print(lt_x1, lt_y1)
+
+        #print(crop_img.shape)
+        #print(crop_img_y.shape)
+        img = cv2.resize(crop_img, (IMG_W, IMG_H), fx=0, fy=0, interpolation=cv2.INTER_LINEAR)
+        img1 = img.reshape( (-1,) )
+
+        if K_dim_ordering == 'th':
+            xxx = img1.reshape(IMG_C, IMG_H, IMG_W)
+        else:
+            xxx = img1.reshape(IMG_H, IMG_W, IMG_C)
+
+        X_batch[i, ] = xxx
+        Y_batch[i, ] = np.array( crop_img_y )
+
+        #check
+        '''
+        cv2.imshow('org', xx)
+        ckx1 = int(float(crop_x1)*IMG_W)
+        cky1 = int(float(crop_y1)*IMG_H)
+        ckx2 = int(float(crop_x2)*IMG_W)
+        cky2 = int(float(crop_y2)*IMG_H)
+        cv2.circle(img, (ckx1, cky1), 1, (0,255,0), 1)
+        cv2.circle(img, (ckx2, cky2), 1, (0,255,0), 1)
+        img_test = img*255
+        img_test = img_test.astype('uint8')
+        cv2.imshow('img_test', img_test)
+        #cv2.waitKey(0)
+
+        print('ckeck data')
+        print(crop_w, crop_h)
+        print(x1, y1, x2, y2)
+        print(crop_x1, crop_y1, crop_x2, crop_y2)
+        #cv2.waitKey(0)
+        '''
+    return (X_batch, Y_batch)
+
 
 
 
@@ -874,27 +856,178 @@ def test_model_img(model, lst_path):
 
 
 
-model = get_model()
-#model = get_model4_nums()
-#model = get_model4_qq_paper()
-model.summary()
 
-xxx = input('disp network')
+def main_train_batch():
+    model = get_model()
+    model.summary()
 
-model.compile(loss='categorical_crossentropy',
+    cur_time = time.strftime('%m-%d-%H-%M',time.localtime(time.time()))
+    result_prex = tmp_prex + dataset_name + '/result/' + cur_time
+
+    json_string = model.to_json()
+    json_path = result_prex + '.json'
+    open(json_path,'w').write(json_string)
+
+
+    xxx = input('disp network')
+
+    model.compile(loss='categorical_crossentropy',
               optimizer='adadelta',
               metrics=[my_metricK])
 
-#sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-#model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-#plot(model, to_file=tmp_prex+'model.png', show_shapes=True)
+    plot(model, to_file=result_prex+'.png', show_shapes=True)
 
-model_path = tmp_prex + dataset_name +'_weihts.h5'
-print('model_path:', model_path)
-nb_epoch = 1200
-#batch_size = 1
-train_model()
-model.load_weights(model_path)
-test_model_web(model)
-#test_model_img(model, tmp_prex+'4nums_test_lst.txt')
+    ckpt_prex = result_prex + '_ckpt'
+
+    if os.path.exists(ckpt_prex):
+        os.redir(ckpt_prex)
+        os.mkdir(ckpt_prex)
+
+
+    nb_epoch_base = 0
+    nb_epoch = 12000
+
+
+    for n_step0 in range(nb_epoch):
+        n_step = n_step0 + nb_epoch_base
+        #print('n_step:', n_step)
+
+
+        HDF5_IDX = n_step / (SAVE_HDF5_CNT) % HDF5_CNT
+        HDF5_IDX = 0
+        (X_train, Y_train, X_test, Y_test) = read_hdf5(HDF5_IDX+1)
+
+
+
+        print('HDF5_IDX={0}'.format(HDF5_IDX))
+        for n_batch_idx in range(EACH_HDF5_CNT):
+
+            X_train_batch = X_train[n_batch_idx*batch_size:(n_batch_idx+1)*batch_size, ]
+            Y_train_batch = Y_train[n_batch_idx*batch_size:(n_batch_idx+1)*batch_size, ]
+
+            (X_train_batch1, Y_train_batch1) = DataAugmentation(X_train_batch, Y_train_batch)
+            #(X_train_batch1, Y_train_batch1) = (X_train_batch, Y_train_batch)
+            train_on_batch_error = model.train_on_batch(X_train_batch1, Y_train_batch1)
+
+
+            X_test_batch = X_test[n_batch_idx*batch_size:(n_batch_idx+1)*batch_size, ]
+            Y_test_batch = Y_test[n_batch_idx*batch_size:(n_batch_idx+1)*batch_size, ]
+
+            (X_test_batch1, Y_test_batch1) = DataAugmentation(X_test_batch, Y_test_batch)
+            #(X_test_batch1, Y_test_batch1) = (X_test_batch, Y_test_batch)
+            test_on_batch_error = model.test_on_batch(X_test_batch1, Y_test_batch1)
+
+            print('n_step={0} {1} {2}'.format(n_step, train_on_batch_error[0], test_on_batch_error[0]) )
+
+            if n_step % 100 == 0:
+                #checkpoint = ModelCheckpoint(filepath='./ckpt/checkpoint-{epoch:05d}-{val_loss:.4f}.hdf5')
+
+                save_path = ckpt_prex + '/checkpoint-%08d.h5' % (n_step)
+                print(save_path)
+                #model.save_weights(save_path)
+
+            #n_step = n_step + EACH_HDF5_CNT
+
+
+        del X_train
+        del Y_train
+        del X_test
+        del Y_test
+
+
+
+    model.summary()
+    #model.save_weights(result_prex+'weight.h5')
+
+    print(model.metrics_names)
+    score = model.evaluate(X_test, Y_test, verbose=0)
+
+    print('loss:', score[0])
+    print('accuracy:', score[1])
+
+
+
+def main_train():
+
+    datagen = ImageDataGenerator(
+                featurewise_center=False,
+                featurewise_std_normalization=False,
+                rotation_range=20,
+                width_shift_range=0.2,
+                height_shift_range=0.2,
+                zoom_range=0.2,
+                horizontal_flip=True)
+
+
+    model = get_model()
+    model.summary()
+
+    cur_time = time.strftime('%m-%d-%H-%M',time.localtime(time.time()))
+    result_prex = tmp_prex + dataset_name + '/result/' + cur_time
+
+    json_string = model.to_json()
+    json_path = result_prex + '.json'
+    open(json_path,'w').write(json_string)
+
+
+    xxx = input('disp network')
+
+    model.compile(loss='categorical_crossentropy',
+              optimizer='adadelta',
+              metrics=[my_metricK])
+              #metrics=['accuracy'])
+
+
+
+    plot(model, to_file=result_prex+'.png', show_shapes=True)
+
+    ckpt_prex = result_prex + '_ckpt'
+
+    if os.path.exists(ckpt_prex):
+        os.redir(ckpt_prex)
+        os.mkdir(ckpt_prex)
+
+
+    nb_epoch_base = 0
+    nb_epoch = 12000
+
+
+    for n_step0 in range(nb_epoch):
+        n_step = n_step0 + nb_epoch_base
+        #print('n_step:', n_step)
+
+
+        HDF5_IDX = n_step / (SAVE_HDF5_CNT) % HDF5_CNT
+        HDF5_IDX = 0
+        (X_train, Y_train, X_test, Y_test) = read_hdf5(HDF5_IDX+1)
+
+
+        datagen.fit(X_train)
+
+        hist = model.fit_generator(datagen.flow(X_train, Y_train, batch_size=batch_size), nb_epoch=nb_epoch,
+                   samples_per_epoch=len(X_train), verbose=1, validation_data=(X_test, Y_test))
+
+
+        #hist = model.fit(X_train, Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
+        #          verbose=1, validation_data=(X_test, Y_test))
+
+        #hist = model.fit(X_train, Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
+        #          verbose=1)
+        #output = open('hist.pkl', 'wb')
+        #pickle.dump(hist, output, -1)
+
+        model.summary()
+        model_path = ckpt_prex + '/checkpoint-final.h5'
+        model.save_weights(model_path)
+
+        print(model.metrics_names)
+        score = model.evaluate(X_test, Y_test, verbose=0)
+
+        print('loss:', score[0])
+        print('accuracy:', score[1])
+
+
+
+main_train_batch()
+#main_train()
